@@ -27,4 +27,6 @@ jobs:
           git -C /tmp/base remote add origin "$UPSTREAM_REPO"
           git -C /tmp/base fetch --depth 1 origin "$UPSTREAM_REV"
           git -C /tmp/base checkout --detach FETCH_HEAD
-          patch -d /tmp/base -p1 --dry-run --forward --batch < patches/001-mtwifi-mixed-ap-mac.patch
+          for patch_file in patches/*.patch; do
+            patch -d /tmp/base -p1 --dry-run --forward --batch < "$patch_file"
+          done

@@ -20,6 +20,12 @@ need "CONFIG_KERNEL_DEBUG_INFO_BTF=y"
 need "CONFIG_PACKAGE_luci-theme-aurora=y"
 need "CONFIG_PACKAGE_kmod-mtd-rw=y"
 need "CONFIG_PACKAGE_kmod-nft-tproxy=y"
+need "CONFIG_PACKAGE_kmod-mt7915e=y"
+need "CONFIG_PACKAGE_kmod-mt7981-firmware=y"
+if grep -qx "CONFIG_PACKAGE_kmod-mt_wifi=y" "$cfg"; then
+	echo "config check failed: proprietary mt_wifi is still selected" >&2
+	exit 1
+fi
 need "CONFIG_PACKAGE_luci-app-qdisc=y"
 need "CONFIG_PACKAGE_kmod-tcp-bbr=y"
 need "CONFIG_PACKAGE_kmod-sched-cake=y"

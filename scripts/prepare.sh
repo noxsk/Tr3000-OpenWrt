@@ -32,6 +32,22 @@ sync_repo() {
 mkdir -p "$(dirname "$BUILD")"
 sync_repo "$BUILD" "$UPSTREAM_REPO" "$UPSTREAM_REV"
 sync_repo "$THEME_DIR" "$THEME_REPO" "$THEME_REV"
+
+MT76_SRC="$(dirname "$BUILD")/openwrt-mt76"
+if [ ! -d "$MT76_SRC/.git" ]; then
+	git init "$MT76_SRC"
+	git -C "$MT76_SRC" remote add origin "$MT76_REPO"
+	git -C "$MT76_SRC" sparse-checkout init --cone
+	git -C "$MT76_SRC" sparse-checkout set package/kernel/mt76
+fi
+if ! git -C "$MT76_SRC" cat-file -e "${MT76_REV}^{commit}" 2>/dev/null; then
+	git -C "$MT76_SRC" fetch --depth 1 origin "$MT76_REV"
+fi
+git -C "$MT76_SRC" checkout --force --detach "$MT76_REV"
+rm -rf "$BUILD/package/kernel/mt76"
+mkdir -p "$BUILD/package/kernel"
+cp -a "$MT76_SRC/package/kernel/mt76" "$BUILD/package/kernel/mt76"
+
 rm -rf "$BUILD/package/luci-app-qdisc"
 cp -a "$ROOT/package/luci-app-qdisc" "$BUILD/package/luci-app-qdisc"
 
@@ -84,6 +100,7 @@ fi
 	echo "FEED_routing_REV=$FEED_routing_REV"
 	echo "FEED_telephony_REV=$FEED_telephony_REV"
 	echo "FEED_video_REV=$FEED_video_REV"
+	echo "MT76_REV=$MT76_REV"
 	if git -C "$ROOT" rev-parse HEAD >/dev/null 2>&1; then
 		echo "RECIPE_REV=$(git -C "$ROOT" rev-parse HEAD)"
 	fi

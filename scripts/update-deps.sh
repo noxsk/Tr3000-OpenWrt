@@ -18,6 +18,7 @@ FEED_luci_REV=$(tip "$FEED_luci_URL" openwrt-25.12)
 FEED_routing_REV=$(tip "$FEED_routing_URL" openwrt-25.12)
 FEED_telephony_REV=$(tip "$FEED_telephony_URL" openwrt-25.12)
 FEED_video_REV=$(tip "$FEED_video_URL" openwrt-25.12)
+MT76_REV=$(tip "$MT76_REPO" "$MT76_BRANCH")
 
 cat > "$ROOT/versions.lock" <<EOF
 # Checked out by scripts/prepare.sh. Refresh with scripts/update-deps.sh.
@@ -39,6 +40,10 @@ FEED_telephony_URL=$FEED_telephony_URL
 FEED_telephony_REV=$FEED_telephony_REV
 FEED_video_URL=$FEED_video_URL
 FEED_video_REV=$FEED_video_REV
+
+MT76_REPO=$MT76_REPO
+MT76_BRANCH=$MT76_BRANCH
+MT76_REV=$MT76_REV
 EOF
 
 echo "updated $ROOT/versions.lock"

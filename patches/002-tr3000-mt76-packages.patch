@@ -1,0 +1,11 @@
+--- a/target/linux/mediatek/image/filogic-ext.mk
++++ b/target/linux/mediatek/image/filogic-ext.mk
+@@ -66,7 +66,7 @@ define Device/cudy_tr3000-v1-mtkuboot
+   IMAGE_SIZE := 114688k
+   KERNEL_IN_UBI := 1
+   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+-  DEVICE_PACKAGES := kmod-usb3 automount
++  DEVICE_PACKAGES := kmod-usb3 automount kmod-mt7915e kmod-mt7981-firmware
+ endef
+ TARGET_DEVICES += cudy_tr3000-v1-mtkuboot
+ 

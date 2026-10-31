@@ -29,11 +29,7 @@ Tr3000-OpenWrt/
 
 ## 镜像里有什么
 
-闭源无线沿用基座 `defconfig/mt7981-ax3000.config`：`kmod-mt_wifi`、APCLI、802.11k/v/r、802.11w、硬件 Fast-NAT（`kmod-mediatek_hnat`、`kmod-warp`）。Wi-Fi 配置入口是 `luci-app-mtwifi-cfg`。
-
-同一频段可以同时开多个 AP 和一个 AP Client。2.4G 的客户端接口是 `apcli0`，5G 是 `apclix0`，两段可以一起开。驱动把 AP Client 数量固定成这两个接口，同一频段再加第二个客户端不会生成新网卡。
-
-AP 和 AP Client 都可以填 MAC。主 AP 写入 `MacAddress`，同频段后面的 AP 写入 `MacAddress1`、`MacAddress2`。AP Client 写入 `ApcliMacAddress`。
+无线使用开源 mt76（`kmod-mt7915e` 与 `kmod-mt7981-firmware`，包来自 OpenWrt，版本在 `versions.lock` 的 `MT76_REV`）。用 LuCI 的普通无线页面配置。同一张 5G 射频可以同时开多个 AP 和多个 Client，这些 Client 必须工作在同一个信道上。MAC 用接口里的 MAC 地址选项。802.11k/v/r 和 802.11w 由 hostapd 提供。闭源 `mt_wifi`、warp 不进这版镜像。基座把 WED 节点改成了闭源驱动的 compatible，mt76 的硬件卸载不会启用。
 
 另外打开：
 
@@ -46,13 +42,11 @@ AP 和 AP Client 都可以填 MAC。主 AP 写入 `MacAddress`，同频段后面
 
 手机 USB 网络共享（RNDIS、CDC-NCM、ipheth）插入后，若还没有 `usbwan`，会创建 DHCP 接口并加入防火墙 `wan` 区，默认关闭 IPv6。之后只更新绑定的网卡，协议、DNS、metric、IPv6 保持原样。已有网卡在线时不会被另一台设备抢走。拔出后只下线，不删除配置。QMI/MBIM 不自动改成 DHCP。
 
-每个频段同时只能启用一个 AP Client，可以和多个 AP 一起用。填写 MAC 会写入 DAT 并重载驱动。留空则保留配置文件里已有的地址，启动时不会因为厂测 MAC 被当成“清空”而重载整张网卡。删掉多余 SSID 后，超出数量的 `MacAddressN` 会被去掉。
-
 内核模块和普通软件分开。镜像只带日常驱动。同一次编译还会归档 `kmod-*`，后装内核模块要用这批包，不要用 ImmortalWrt 滚动源里的 kmod。用户态程序仍可按需用 apk 安装。
 
 ## 编译
 
-`versions.lock` 固定基座、主题和 feeds。日常编译按这个文件检出。要追新依赖时单独运行 `scripts/update-deps.sh`，再提交锁文件。
+`versions.lock` 固定基座、mt76、主题和 feeds。日常编译按这个文件检出。要追新依赖时单独运行 `scripts/update-deps.sh`，再提交锁文件。
 
 GitHub Actions 每天 02:00（UTC+8）按锁定版本编译，也可以手动触发。产物在 Artifacts 里，包含 sysupgrade、构建版本记录和同批次 kmod，保留 14 天。推送和 pull request 只做脚本语法和补丁检查，不完整编译。
 
@@ -68,4 +62,4 @@ insmod mtd-rw i_want_a_brick=1
 
 QMI/MBIM 拨号工具不在镜像里。需要时用 apk 安装 `uqmi` 或 `umbim`，并在接口上选择对应协议。内核模块请用同一次编译归档的 kmod。
 
-硬件 Fast-NAT 使用基座原有开关。TR3000 的 GMAC 走 phy-handle，千兆有线需要在实机上确认加速是否生效。
+有线 HNAT（`kmod-mediatek_hnat`）仍随基座打开。TR3000 的 GMAC 走 phy-handle，千兆有线需要在实机上确认加速是否生效。

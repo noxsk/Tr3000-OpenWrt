@@ -1,0 +1,62 @@
+#!/bin/sh /etc/rc.common
+
+START=95
+STOP=10
+USE_PROCD=1
+
+service_triggers() {
+	procd_add_reload_trigger "qdisc"
+}
+
+qdisc_module() {
+	case "$1" in
+	fq) echo sch_fq ;;
+	cake) echo sch_cake ;;
+	fq_pie) echo sch_fq_pie ;;
+	*) echo sch_fq ;;
+	esac
+}
+
+start_service() {
+	config_load qdisc
+
+	local tcp_cca qdisc module
+	config_get tcp_cca config tcp_cca bbr
+	config_get qdisc config qdisc fq
+	module=$(qdisc_module "$qdisc")
+
+	case "$tcp_cca" in
+	bbr|cubic) ;;
+	*) tcp_cca=bbr ;;
+	esac
+	case "$qdisc" in
+	fq|cake|fq_pie) ;;
+	*) qdisc=fq; module=sch_fq ;;
+	esac
+
+	[ "$tcp_cca" = "bbr" ] && modprobe tcp_bbr 2>/dev/null
+	modprobe "$module" 2>/dev/null
+
+	sysctl -w net.ipv4.tcp_congestion_control="$tcp_cca" >/dev/null
+	sysctl -w net.core.default_qdisc="$qdisc" >/dev/null
+
+	mkdir -p /etc/sysctl.d /etc/modules-load.d
+	cat > /etc/sysctl.d/15-qdisc.conf <<EOF
+net.ipv4.tcp_congestion_control=$tcp_cca
+net.core.default_qdisc=$qdisc
+EOF
+	{
+		[ "$tcp_cca" = "bbr" ] && echo tcp_bbr
+		echo "$module"
+	} > /etc/modules-load.d/qdisc.conf
+
+	local iface
+	iface=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
+	if [ -n "$iface" ]; then
+		tc qdisc replace dev "$iface" root "$qdisc" >/dev/null 2>&1 || true
+	fi
+}
+
+stop_service() {
+	return 0
+}

@@ -41,11 +41,12 @@ AP 和 AP Client 都可以填 MAC。主 AP 写入 `MacAddress`，同频段后面
 - iOS（`kmod-usb-net-ipheth`、`usbmuxd`）、Android RNDIS/CDC-NCM、QMI/MBIM/Option 内核驱动
 - `kmod-usb3` 与 `automount`（ext4、ntfs3、exfat、vfat，外接盘挂到 `/mnt/sd*`）
 - `kmod-mtd-rw`、`kmod-tun`
+- LuCI 页面「队列算法」：拥塞控制可选 CUBIC / BBR，队列规则可选 FQ / CAKE / FQ-PIE。默认是 BBR + FQ
 - LuCI 与中文语言包。默认主题是 [luci-theme-aurora](https://github.com/eamonxg/luci-theme-aurora)，版本记在 `versions.lock`。`bootstrap-mod` 仍留在镜像里，可在 LuCI 里切换
 
 手机 USB 网络共享（RNDIS、CDC-NCM、ipheth）插入后，若还没有 `usbwan`，会创建 DHCP 接口并加入防火墙 `wan` 区，默认关闭 IPv6。之后只更新绑定的网卡，协议、DNS、metric、IPv6 保持原样。已有网卡在线时不会被另一台设备抢走。拔出后只下线，不删除配置。QMI/MBIM 不自动改成 DHCP。
 
-每个频段同时只能启用一个 AP Client，可以和多个 AP 一起用。AP 的 MAC 留空会从 DAT 里删掉对应的 `MacAddress` / `ApcliMacAddress`，让驱动回到厂测地址，并触发无线驱动重载。
+每个频段同时只能启用一个 AP Client，可以和多个 AP 一起用。填写 MAC 会写入 DAT 并重载驱动。留空则保留配置文件里已有的地址，启动时不会因为厂测 MAC 被当成“清空”而重载整张网卡。删掉多余 SSID 后，超出数量的 `MacAddressN` 会被去掉。
 
 内核模块和普通软件分开。镜像只带日常驱动。同一次编译还会归档 `kmod-*`，后装内核模块要用这批包，不要用 ImmortalWrt 滚动源里的 kmod。用户态程序仍可按需用 apk 安装。
 

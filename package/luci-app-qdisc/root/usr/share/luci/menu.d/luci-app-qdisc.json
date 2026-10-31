@@ -1,0 +1,14 @@
+{
+	"admin/network/qdisc": {
+		"title": "Queue discipline",
+		"order": 80,
+		"action": {
+			"type": "view",
+			"path": "qdisc"
+		},
+		"depends": {
+			"acl": [ "luci-app-qdisc" ],
+			"uci": { "qdisc": true }
+		}
+	}
+}

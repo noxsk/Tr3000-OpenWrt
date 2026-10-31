@@ -1,0 +1,11 @@
+{
+	"luci-app-qdisc": {
+		"description": "Grant UCI access for queue discipline",
+		"read": {
+			"uci": [ "qdisc" ]
+		},
+		"write": {
+			"uci": [ "qdisc" ]
+		}
+	}
+}

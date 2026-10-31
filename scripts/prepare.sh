@@ -32,6 +32,8 @@ sync_repo() {
 mkdir -p "$(dirname "$BUILD")"
 sync_repo "$BUILD" "$UPSTREAM_REPO" "$UPSTREAM_REV"
 sync_repo "$THEME_DIR" "$THEME_REPO" "$THEME_REV"
+rm -rf "$BUILD/package/luci-app-qdisc"
+cp -a "$ROOT/package/luci-app-qdisc" "$BUILD/package/luci-app-qdisc"
 
 if [ -n "${DL_CACHE:-}" ]; then
 	mkdir -p "$DL_CACHE"

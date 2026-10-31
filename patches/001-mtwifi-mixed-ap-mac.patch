@@ -89,7 +89,7 @@ index 15e1810..d8361a6 100644
              "type": "boolean",
              "description": "Enable bridge port isolation"
 diff --git a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc
-index 8afc128..e015879 100755
+index 8afc128..4205df5 100755
 --- a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc
 +++ b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc
 @@ -81,6 +81,10 @@ function check_prerequisite() {
@@ -103,7 +103,7 @@ index 8afc128..e015879 100755
  function dat_diff(dat_old, dat_new) {
  	// prepare hashtable for O(1) lookups
  	let res = {
-@@ -91,19 +95,22 @@ function dat_diff(dat_old, dat_new) {
+@@ -91,19 +95,26 @@ function dat_diff(dat_old, dat_new) {
  	let reload_lookup = {};
  	for (let k in defs.REINSTALL_CFGS) reload_lookup[k] = true;
  
@@ -128,31 +128,36 @@ index 8afc128..e015879 100755
 +	};
 +
 +	for (let k, v in dat_new) {
++		if (k == "drop_mac")
++			continue;
 +		if (v != dat_old[k])
 +			note(k, dat_old[k], v);
 +	}
-+	// Keys omitted from the new DAT must count as deletions. merge() does not remove them.
-+	for (let k, v in dat_old) {
-+		if (is_mac_key(k) && !exists(dat_new, k))
-+			note(k, v, null);
++	// Only MAC keys this conversion still owns can be cleared. The profile's
++	// factory MacAddress is omitted when UCI has no custom address; deleting
++	// it reloads the whole card on every boot.
++	for (let k in dat_new.drop_mac || []) {
++		if (exists(dat_old, k))
++			note(k, dat_old[k], null);
  	}
  	return res;
  }
-@@ -176,6 +183,12 @@ export function setup(uci_cfg, all_devs) {
+@@ -176,6 +187,13 @@ export function setup(uci_cfg, all_devs) {
  		}
  	}
  
-+	// Drop MAC overrides that UCI no longer sets, including renumbered MBSS keys.
-+	for (let k, v in dat_old) {
-+		if (is_mac_key(k) && !exists(dat_new, k))
++	// Drop only the MAC keys this conversion listed. Factory addresses stay.
++	for (let k in dat_new.drop_mac || []) {
++		if (exists(dat_old, k))
 +			ctx.unset(k);
 +	}
++	delete dat_new.drop_mac;
 +
  	// commit converted DAT config
  	ctx.merge(dat_new);
  	ctx.commit();
 diff --git a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc
-index fe0371b..41aff0f 100644
+index fe0371b..220b8f9 100644
 --- a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc
 +++ b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc
 @@ -109,7 +109,7 @@ export function convert(uci_cfg) {
@@ -243,3 +248,17 @@ index fe0371b..41aff0f 100644
  		// base cfgs
          set_token("WirelessMode", wmode_int); // here WirelessMode is set twice, we keep it for safety
  		set_token("NoForwarding", strict_bool(c.isolate));
+@@ -376,5 +389,12 @@ export function convert(uci_cfg) {
+ 		}
+ 	}
+ 
++	// Stale MBSS MAC keys only. Do not drop MacAddress itself: the driver
++	// stores the factory address there, and removing it reloads the card.
++	let drop = [];
++	for (let i = bssid_count; i <= defs.MAX_MBSSID; i++)
++		push(drop, `MacAddress${i}`);
++	dat.drop_mac = drop;
++
+ 	return dat;
+ };
+\ No newline at end of file

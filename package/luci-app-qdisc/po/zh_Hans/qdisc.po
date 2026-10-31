@@ -1,0 +1,13 @@
+msgid ""
+msgstr ""
+"Language: zh_Hans\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Queue discipline"
+msgstr "队列算法"
+
+msgid "Choose the TCP congestion control and the default packet queue."
+msgstr "选择 TCP 拥塞控制和默认队列规则。"
+
+msgid "TCP congestion control"
+msgstr "拥塞控制"

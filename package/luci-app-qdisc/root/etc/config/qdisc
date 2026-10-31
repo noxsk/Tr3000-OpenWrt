@@ -1,0 +1,3 @@
+config qdisc 'config'
+	option tcp_cca 'bbr'
+	option qdisc 'fq'

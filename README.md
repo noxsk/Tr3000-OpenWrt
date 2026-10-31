@@ -29,7 +29,7 @@ Tr3000-OpenWrt/
 
 ## 镜像里有什么
 
-无线使用开源 mt76（`kmod-mt7915e` 与 `kmod-mt7981-firmware`，包来自 OpenWrt，版本在 `versions.lock` 的 `MT76_REV`）。用 LuCI 的普通无线页面配置。同一张 5G 射频可以同时开多个 AP 和多个 Client，这些 Client 必须工作在同一个信道上。MAC 用接口里的 MAC 地址选项。802.11k/v/r 和 802.11w 由 hostapd 提供。闭源 `mt_wifi`、warp 不进这版镜像。基座把 WED 节点改成了闭源驱动的 compatible，mt76 的硬件卸载不会启用。
+无线使用开源 mt76（`kmod-mt7915e` 与 `kmod-mt7981-firmware`）。包来自 OpenWrt `openwrt-25.12`，版本在 `versions.lock` 的 `MT76_REV`，和基座的 mac80211 6.18 backports 对齐。用 LuCI 的普通无线页面配置。同一张 5G 射频可以同时开多个 AP 和多个 Client，这些 Client 必须工作在同一个信道上。MAC 用接口里的 MAC 地址选项。802.11k/v/r 和 802.11w 由 hostapd 提供。闭源 `mt_wifi`、warp 不进这版镜像。基座把 WED 节点改成了闭源驱动的 compatible，mt76 的硬件卸载不会启用。
 
 另外打开：
 

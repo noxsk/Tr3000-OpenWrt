@@ -47,6 +47,8 @@ git -C "$MT76_SRC" checkout --force --detach "$MT76_REV"
 rm -rf "$BUILD/package/kernel/mt76"
 mkdir -p "$BUILD/package/kernel"
 cp -a "$MT76_SRC/package/kernel/mt76" "$BUILD/package/kernel/mt76"
+mkdir -p "$BUILD/package/kernel/mt76/patches"
+cp -a "$ROOT"/patches/mt76/*.patch "$BUILD/package/kernel/mt76/patches/"
 
 rm -rf "$BUILD/package/luci-app-qdisc"
 cp -a "$ROOT/package/luci-app-qdisc" "$BUILD/package/luci-app-qdisc"

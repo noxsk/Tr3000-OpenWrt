@@ -30,3 +30,23 @@ jobs:
           for patch_file in patches/*.patch; do
             patch -d /tmp/base -p1 --dry-run --forward --batch < "$patch_file"
           done
+
+      - name: mt76 patch applies to the locked driver
+        run: |
+          . ./versions.lock
+          git init /tmp/owrt-mt76
+          git -C /tmp/owrt-mt76 remote add origin "$MT76_REPO"
+          git -C /tmp/owrt-mt76 sparse-checkout init --cone
+          git -C /tmp/owrt-mt76 sparse-checkout set package/kernel/mt76
+          git -C /tmp/owrt-mt76 fetch --depth 1 origin "$MT76_REV"
+          git -C /tmp/owrt-mt76 checkout --detach FETCH_HEAD
+          makefile=/tmp/owrt-mt76/package/kernel/mt76/Makefile
+          src_url=$(sed -n 's/^PKG_SOURCE_URL:=//p' "$makefile")
+          src_ver=$(sed -n 's/^PKG_SOURCE_VERSION:=//p' "$makefile")
+          git init /tmp/mt76
+          git -C /tmp/mt76 remote add origin "$src_url"
+          git -C /tmp/mt76 fetch --depth 1 origin "$src_ver"
+          git -C /tmp/mt76 checkout --detach FETCH_HEAD
+          for patch_file in patches/mt76/*.patch; do
+            patch -d /tmp/mt76 -p1 --dry-run --forward --batch < "$patch_file"
+          done

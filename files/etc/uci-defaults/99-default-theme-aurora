@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Run after the themes' own 30_* defaults so Aurora stays selected.
+uci set luci.themes.Aurora='/luci-static/aurora'
+uci set luci.main.mediaurlbase='/luci-static/aurora'
+uci commit luci
+
+exit 0

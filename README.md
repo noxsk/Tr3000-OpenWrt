@@ -1,0 +1,70 @@
+# Tr3000-OpenWrt
+
+Cudy TR3000 128MB（MTK U-Boot，112MiB UBI）的固件配方。基座是 [chasey-dev/immortalwrt-mt798x-rebase](https://github.com/chasey-dev/immortalwrt-mt798x-rebase) 的 `25.12` 分支。
+
+内核和驱动随镜像带齐。代理、异地组网、Samba/Ksmbd、dae 不预装，需要的软件以后用 apk 或独立二进制安装。
+
+## 机型
+
+只编译 `cudy_tr3000-v1-mtkuboot`。
+
+- UBI：`0x5c0000` 起，长度 `0x7000000`（112MiB）
+- 镜像上限：114688k
+- 产物：`bin/targets/mediatek/filogic/*cudy_tr3000-v1-mtkuboot*sysupgrade*`
+
+路由器需要已经在跑这套 112M MTK U-Boot。本配方不生成 BL2/FIP。
+
+## 目录
+
+本目录只放要提交的配方。源码和编译输出在上一级的 `build/`：
+
+```text
+Tr3000_dev/build/immortalwrt-mt798x-rebase/
+Tr3000-OpenWrt/
+  seed.config
+  files/etc/hotplug.d/net/99-usbwan
+  scripts/prepare.sh
+  scripts/build.sh
+```
+
+## 镜像里有什么
+
+闭源无线沿用基座 `defconfig/mt7981-ax3000.config`：`kmod-mt_wifi`、APCLI、802.11k/v/r、802.11w、硬件 Fast-NAT（`kmod-mediatek_hnat`、`kmod-warp`）。Wi-Fi 配置入口是 `luci-app-mtwifi-cfg`。
+
+同一频段可以同时开多个 AP 和一个 AP Client。2.4G 的客户端接口是 `apcli0`，5G 是 `apclix0`，两段可以一起开。驱动把 AP Client 数量固定成这两个接口，同一频段再加第二个客户端不会生成新网卡。
+
+AP 和 AP Client 都可以填 MAC。主 AP 写入 `MacAddress`，同频段后面的 AP 写入 `MacAddress1`、`MacAddress2`。AP Client 写入 `ApcliMacAddress`。
+
+另外打开：
+
+- `CONFIG_KERNEL_DEBUG_INFO_BTF`、`CONFIG_KERNEL_CGROUP_BPF`、`CONFIG_KERNEL_XDP_SOCKETS`、`kmod-nft-tproxy`
+- iOS（`kmod-usb-net-ipheth`、`usbmuxd`）、Android RNDIS/CDC-NCM、QMI/MBIM/Option 内核驱动
+- `kmod-usb3` 与 `automount`（ext4、ntfs3、exfat、vfat，外接盘挂到 `/mnt/sd*`）
+- `kmod-mtd-rw`、`kmod-tun`
+- LuCI 与中文语言包。默认主题是 [luci-theme-aurora](https://github.com/eamonxg/luci-theme-aurora)，版本记在 `versions.lock`。`bootstrap-mod` 仍留在镜像里，可在 LuCI 里切换
+
+手机 USB 网络共享（RNDIS、CDC-NCM、ipheth）插入后，若还没有 `usbwan`，会创建 DHCP 接口并加入防火墙 `wan` 区，默认关闭 IPv6。之后只更新绑定的网卡，协议、DNS、metric、IPv6 保持原样。已有网卡在线时不会被另一台设备抢走。拔出后只下线，不删除配置。QMI/MBIM 不自动改成 DHCP。
+
+每个频段同时只能启用一个 AP Client，可以和多个 AP 一起用。AP 的 MAC 留空会从 DAT 里删掉对应的 `MacAddress` / `ApcliMacAddress`，让驱动回到厂测地址，并触发无线驱动重载。
+
+内核模块和普通软件分开。镜像只带日常驱动。同一次编译还会归档 `kmod-*`，后装内核模块要用这批包，不要用 ImmortalWrt 滚动源里的 kmod。用户态程序仍可按需用 apk 安装。
+
+## 编译
+
+`versions.lock` 固定基座、主题和 feeds。日常编译按这个文件检出。要追新依赖时单独运行 `scripts/update-deps.sh`，再提交锁文件。
+
+GitHub Actions 每天 02:00（UTC+8）按锁定版本编译，也可以手动触发。产物在 Artifacts 里，包含 sysupgrade、构建版本记录和同批次 kmod，保留 14 天。推送和 pull request 只做脚本语法和补丁检查，不完整编译。
+
+本机 Linux 执行 `./scripts/build.sh`。基座克隆到上一级的 `build/`。`KERNEL_DEBUG_INFO_BTF` 在 macOS 上会被 Kconfig 关掉，所以不要在 macOS 上执行 `make defconfig` 或 `make`。
+
+## 刷入之后
+
+解锁 MTD 只读（确认分区再写）：
+
+```sh
+insmod mtd-rw i_want_a_brick=1
+```
+
+QMI/MBIM 拨号工具不在镜像里。需要时用 apk 安装 `uqmi` 或 `umbim`，并在接口上选择对应协议。内核模块请用同一次编译归档的 kmod。
+
+硬件 Fast-NAT 使用基座原有开关。TR3000 的 GMAC 走 phy-handle，千兆有线需要在实机上确认加速是否生效。

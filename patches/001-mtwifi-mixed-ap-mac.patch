@@ -1,0 +1,245 @@
+diff --git a/package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js b/package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js
+index a97feda..dcda09f 100644
+--- a/package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js
++++ b/package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js
+@@ -1066,10 +1066,24 @@ return view.extend({
+ 
+ 				o = ss.taboption('general', form.ListValue, 'mode', _('Mode'));
+ 				if (hwtype == 'mtwifi') {
+-					if (ifmode == 'ap')
+-						o.value('ap', _('Access Point'));
+-					else if (ifmode == 'sta')
+-						o.value('sta', _('Client'));
++					o.value('ap', _('Access Point'));
++					o.value('sta', _('Client'));
++					o.validate = function(section_id, value) {
++						if (value != 'sta')
++							return true;
++						if (uci.get('wireless', section_id, 'disabled') == '1')
++							return true;
++						var device = uci.get('wireless', section_id, 'device');
++						var sections = uci.sections('wireless', 'wifi-iface') || [];
++						for (var i = 0; i < sections.length; i++) {
++							var sec = sections[i];
++							if (sec['.name'] == section_id)
++								continue;
++							if (sec.device == device && sec.mode == 'sta' && sec.disabled != '1')
++								return _('This radio already has an enabled client');
++						}
++						return true;
++					};
+ 				} else {
+ 					o.value('ap', _('Access Point'));
+ 					o.value('sta', _('Client'));
+@@ -1279,6 +1293,12 @@ return view.extend({
+ 					var bssid = ss.children[5];
+ 					bssid.depends('mode', 'sta');
+ 
++					o = ss.taboption('general', form.Value, 'macaddr', _('MAC-Address'));
++					o.datatype = 'macaddr';
++					o.depends('mode', 'ap');
++					o.depends('mode', 'sta');
++					o.placeholder = _('auto');
++
+ 					o = ss.taboption('macfilter', form.ListValue, 'macfilter', _('MAC Address Filter'));
+ 					o.depends('mode', 'ap');
+ 					o.value('', _('disable'));
+diff --git a/package/mtk/applications/mtwifi-cfg-ucode/files/lib/netifd/wireless/mtwifi.sh b/package/mtk/applications/mtwifi-cfg-ucode/files/lib/netifd/wireless/mtwifi.sh
+index 741e94e..a7b7e88 100755
+--- a/package/mtk/applications/mtwifi-cfg-ucode/files/lib/netifd/wireless/mtwifi.sh
++++ b/package/mtk/applications/mtwifi-cfg-ucode/files/lib/netifd/wireless/mtwifi.sh
+@@ -151,6 +151,8 @@ function handle_setup(data) {
+                     "encryption":   sec.encryption,
+                     "key":          sec.key,
+                     "ssid":         sec.ssid,
++                    "bssid":        sec.bssid,
++                    "macaddr":      sec.macaddr,
+                     "radios":       []
+                 }
+             };
+@@ -214,11 +216,13 @@ function handle_setup(data) {
+         // STA(Client) mode handling
+         // mtwifi_vif_sta_set_data
+         else if (mode == "sta") {
+-            if (apcli_idx <= MAX_APCLI_IDX) {
++            if (config.disabled) {
++                log.info(`[Setup] Skipped disabled STA interface ${idx}.`);
++            } else if (apcli_idx <= MAX_APCLI_IDX) {
+                 calc_ifname = apcli_prefix + apcli_idx;
+                 apcli_idx++;
+             } else {
+-                log.warn(`[Setup] Ignored STA interface ${idx}: Max index reached.`);
++                log.warn(`[Setup] Ignored STA interface ${idx}: only one enabled client per radio.`);
+             }
+         }
+ 
+diff --git a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/schema/mtwifi/wireless.iface.json b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/schema/mtwifi/wireless.iface.json
+index 15e1810..d8361a6 100644
+--- a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/schema/mtwifi/wireless.iface.json
++++ b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/schema/mtwifi/wireless.iface.json
+@@ -29,6 +29,10 @@
+             "type": "string",
+             "description": "MAC address of the access point"
+         },
++        "macaddr": {
++            "type": "string",
++            "description": "Override this interface MAC address. AP index 0 uses MacAddress, later APs use MacAddressN, and the AP client uses ApcliMacAddress."
++        },
+         "bridge_isolate": {
+             "type": "boolean",
+             "description": "Enable bridge port isolation"
+diff --git a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc
+index 8afc128..e015879 100755
+--- a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc
++++ b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/config.uc
+@@ -81,6 +81,10 @@ function check_prerequisite() {
+ 	return !driver.is_kmod();
+ }
+ 
++function is_mac_key(k) {
++	return k == "MacAddress" || k == "ApcliMacAddress" || k == "ApcliMacAddress1" || match(k, /^MacAddress\d+$/);
++}
++
+ function dat_diff(dat_old, dat_new) {
+ 	// prepare hashtable for O(1) lookups
+ 	let res = {
+@@ -91,19 +95,22 @@ function dat_diff(dat_old, dat_new) {
+ 	let reload_lookup = {};
+ 	for (let k in defs.REINSTALL_CFGS) reload_lookup[k] = true;
+ 
+-	for (let k, v in dat_new) {
+-		// k: DAT config key
+-		// v: new DAT config of current key
+-		if (v != dat_old[k]) {
+-			res.is_changed = true;
+-			// log.debug(`[dat_diff] Key changed: ${k} (${dat_old[k]} -> ${v})`);
+-			if (reload_lookup[k]) {
+-				res.need_reload = true;
+-				log.notice(`[Reload Trigger] Key changed: ${k} (${dat_old[k]} -> ${v})`);
+-				// we have collected all needed flags
+-				break;
+-			}
++	let note = function(k, oldv, newv) {
++		res.is_changed = true;
++		if (reload_lookup[k] || is_mac_key(k)) {
++			res.need_reload = true;
++			log.notice(`[Reload Trigger] Key changed: ${k} (${oldv} -> ${newv})`);
+ 		}
++	};
++
++	for (let k, v in dat_new) {
++		if (v != dat_old[k])
++			note(k, dat_old[k], v);
++	}
++	// Keys omitted from the new DAT must count as deletions. merge() does not remove them.
++	for (let k, v in dat_old) {
++		if (is_mac_key(k) && !exists(dat_new, k))
++			note(k, v, null);
+ 	}
+ 	return res;
+ }
+@@ -176,6 +183,12 @@ export function setup(uci_cfg, all_devs) {
+ 		}
+ 	}
+ 
++	// Drop MAC overrides that UCI no longer sets, including renumbered MBSS keys.
++	for (let k, v in dat_old) {
++		if (is_mac_key(k) && !exists(dat_new, k))
++			ctx.unset(k);
++	}
++
+ 	// commit converted DAT config
+ 	ctx.merge(dat_new);
+ 	ctx.commit();
+diff --git a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc
+index fe0371b..41aff0f 100644
+--- a/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc
++++ b/package/mtk/applications/mtwifi-cfg-ucode/files/usr/share/ucode/mtwifi/converter.uc
+@@ -109,7 +109,7 @@ export function convert(uci_cfg) {
+ 			ap_count++;
+ 			let idx = get_vif_idx(iface.mtwifi_ifname);
+ 			if (idx > max_ap_idx) max_ap_idx = idx;
+-		} else if (c.mode == "sta") {
++		} else if (c.mode == "sta" && !c.disabled) {
+ 			has_apcli = true;
+ 		}
+ 	}
+@@ -204,32 +204,37 @@ export function convert(uci_cfg) {
+ 	let apcli_reset_keys = ["ApCliSsid", "ApCliBssid", "ApCliAuthMode", "ApCliEncrypType", "ApCliWPAPSK"];
+ 	for (let k in apcli_reset_keys) dat[k] = "";
+ 
+-	if (has_apcli) {
+-		for (let k, iface in ifaces) {
+-			let c = ifaces[k].config;
+-			if (c.mode == "sta") {
+-				dat.ApCliEnable = c.disabled ? "0" : "1";
+-				dat.ApCliSsid = c.ssid;
+-				dat.ApCliBssid = c.bssid;
+-				dat.ApCliWPAPSK = c.key;
+-
+-				// uci encryption mode => DAT cfg 
+-				let enc_info = defs.ENC_2_DAT[c.encryption];
+-				if (enc_info) {
+-					dat.ApCliAuthMode = enc_info[0];
+-					dat.ApCliEncrypType = enc_info[1];
+-					
+-					// APCLI PMF
+-					if (enc_info[0] == "OWE" || enc_info[0] == "WPA3PSK") {
+-						dat.ApCliPMFMFPC = "1";
+-						dat.ApCliPMFMFPR = "1";
+-						dat.ApCliPMFSHA256 = "0";
+-					} else {
+-						dat.ApCliPMFMFPC = "0";
+-						dat.ApCliPMFMFPR = "0";
+-					}
+-				}
+-				break; // only ONE ApCli supported for each device
++	// One enabled client per radio. Disabled client sections are kept in UCI
++	// and are not written into ApCli*.
++	let chosen_sta = null;
++	for (let k, iface in ifaces) {
++		let c = ifaces[k].config;
++		if (c.mode != "sta" || c.disabled)
++			continue;
++		if (!chosen_sta)
++			chosen_sta = c;
++	}
++
++	if (chosen_sta) {
++		dat.ApCliEnable = "1";
++		dat.ApCliSsid = chosen_sta.ssid;
++		dat.ApCliBssid = chosen_sta.bssid;
++		dat.ApCliWPAPSK = chosen_sta.key;
++		if (chosen_sta.macaddr)
++			dat.ApcliMacAddress = chosen_sta.macaddr;
++
++		let enc_info = defs.ENC_2_DAT[chosen_sta.encryption];
++		if (enc_info) {
++			dat.ApCliAuthMode = enc_info[0];
++			dat.ApCliEncrypType = enc_info[1];
++
++			if (enc_info[0] == "OWE" || enc_info[0] == "WPA3PSK") {
++				dat.ApCliPMFMFPC = "1";
++				dat.ApCliPMFMFPR = "1";
++				dat.ApCliPMFSHA256 = "0";
++			} else {
++				dat.ApCliPMFMFPC = "0";
++				dat.ApCliPMFMFPR = "0";
+ 			}
+ 		}
+ 	}
+@@ -306,6 +311,14 @@ export function convert(uci_cfg) {
+ 		set_suffix("SSID", c.ssid);
+ 		set_suffix("WPAPSK", c.key);
+ 
++		// MacAddress is the main BSS. MacAddress1.. follow MBSS index.
++		if (c.macaddr) {
++			if (vif_idx == 0)
++				dat.MacAddress = c.macaddr;
++			else
++				dat[`MacAddress${vif_idx}`] = c.macaddr;
++		}
++
+ 		// base cfgs
+         set_token("WirelessMode", wmode_int); // here WirelessMode is set twice, we keep it for safety
+ 		set_token("NoForwarding", strict_bool(c.isolate));

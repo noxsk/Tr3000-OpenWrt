@@ -1,0 +1,104 @@
+#!/bin/sh
+
+# One DHCP WAN for phone USB tethering. QMI/MBIM devices are left alone.
+# An existing usbwan section keeps its protocol, DNS, metric, and IPv6.
+
+SYSFS="${USBWAN_SYSFS:-/sys}"
+IFNAME="${INTERFACE:-$DEVNAME}"
+[ -n "$IFNAME" ] || exit 0
+[ "$IFNAME" != "lo" ] || exit 0
+
+case "$ACTION" in
+add|remove) ;;
+*) exit 0 ;;
+esac
+
+driver_of() {
+	drv=$(readlink "$SYSFS/class/net/$1/device/driver" 2>/dev/null) || return 1
+	basename "$drv"
+}
+
+is_phone_tether() {
+	case "$(driver_of "$1" 2>/dev/null)" in
+	rndis_host|cdc_ether|cdc_ncm|cdc_subset|ipheth|huawei_cdc_ncm) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+netdev_present() {
+	[ -n "$1" ] && [ -e "$SYSFS/class/net/$1" ]
+}
+
+device_taken() {
+	for section in $(uci show network 2>/dev/null | sed -n "s/^network\\.\\([^=]*\\)=interface$/\\1/p"); do
+		[ "$section" = "usbwan" ] && continue
+		dev=$(uci -q get "network.$section.device" || true)
+		[ "$dev" = "$1" ] && return 0
+	done
+	return 1
+}
+
+zone_index() {
+	i=0
+	while name=$(uci -q get "firewall.@zone[$i].name"); do
+		if [ "$name" = "wan" ]; then
+			echo "$i"
+			return 0
+		fi
+		i=$((i + 1))
+	done
+	return 1
+}
+
+wan_has_usbwan() {
+	idx="$1"
+	for net in $(uci -q get "firewall.@zone[$idx].network"); do
+		[ "$net" = "usbwan" ] && return 0
+	done
+	return 1
+}
+
+case "$ACTION" in
+add)
+	is_phone_tether "$IFNAME" || exit 0
+	device_taken "$IFNAME" && exit 0
+
+	firewall_changed=0
+	if uci -q get network.usbwan >/dev/null; then
+		current=$(uci -q get network.usbwan.device || true)
+		if [ -n "$current" ] && [ "$current" != "$IFNAME" ] && netdev_present "$current"; then
+			logger -t usbwan "usbwan is using $current, ignoring $IFNAME"
+			exit 0
+		fi
+		if [ "$current" != "$IFNAME" ]; then
+			uci set network.usbwan.device="$IFNAME"
+			uci commit network
+		fi
+	else
+		uci set network.usbwan=interface
+		uci set network.usbwan.proto='dhcp'
+		uci set network.usbwan.device="$IFNAME"
+		uci set network.usbwan.ipv6='0'
+		uci commit network
+		if idx=$(zone_index); then
+			if ! wan_has_usbwan "$idx"; then
+				uci add_list "firewall.@zone[$idx].network=usbwan"
+				uci commit firewall
+				firewall_changed=1
+			fi
+		fi
+	fi
+	if [ "$firewall_changed" -eq 1 ] && [ -x /etc/init.d/firewall ]; then
+		/etc/init.d/firewall reload
+	fi
+	ifup usbwan
+	logger -t usbwan "using $IFNAME"
+	;;
+remove)
+	current=$(uci -q get network.usbwan.device || true)
+	if [ "$current" = "$IFNAME" ]; then
+		ifdown usbwan
+		logger -t usbwan "down $IFNAME"
+	fi
+	;;
+esac

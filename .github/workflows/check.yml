@@ -1,0 +1,30 @@
+name: Check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  recipe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout recipe
+        uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: |
+          sh -n scripts/*.sh
+          sh -n files/etc/hotplug.d/net/*
+          sh -n files/etc/uci-defaults/*
+
+      - name: Patch applies to the locked base
+        run: |
+          . ./versions.lock
+          git init /tmp/base
+          git -C /tmp/base remote add origin "$UPSTREAM_REPO"
+          git -C /tmp/base fetch --depth 1 origin "$UPSTREAM_REV"
+          git -C /tmp/base checkout --detach FETCH_HEAD
+          patch -d /tmp/base -p1 --dry-run --forward --batch < patches/001-mtwifi-mixed-ap-mac.patch
